@@ -28,6 +28,33 @@ func getFileSize(url string) (int, error) {
 	return size, nil
 }
 
+func generateDownloadRanges(maxGoroutines int, fileSize int) []DownloadRange {
+	partSize := fileSize / maxGoroutines
+	firstDownloadRange := DownloadRange{
+		start: 0,
+		end:   partSize - 1, //ちょうどpartSize分取れるように-1する
+	}
+	downloadRanges := []DownloadRange{firstDownloadRange}
+
+	for i := 1; i < maxGoroutines; i++ {
+		downloadRange := DownloadRange{
+			start: downloadRanges[i-1].end + 1,
+			end:   downloadRanges[i-1].end + partSize,
+		}
+		if i == maxGoroutines-1 {
+			downloadRange.end = fileSize - 1
+		}
+		downloadRanges = append(downloadRanges, downloadRange)
+	}
+
+	return downloadRanges
+}
+
+type DownloadRange struct {
+	start int
+	end   int
+}
+
 func main() {
 	url := "https://raw.githubusercontent.com/golang/go/master/README.md"
 
