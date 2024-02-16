@@ -5,7 +5,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"runtime"
 	"strconv"
+	"sync"
 )
 
 func getFileSize(url string) (int, error) {
@@ -28,41 +30,61 @@ func getFileSize(url string) (int, error) {
 	return size, nil
 }
 
-func generateDownloadRanges(maxGoroutines int, fileSize int) []DownloadRange {
+func generateRangeRequests(maxGoroutines int, fileSize int) []RangeRequest {
 	partSize := fileSize / maxGoroutines
-	firstDownloadRange := DownloadRange{
+	firstRangeRequest := RangeRequest{
 		start: 0,
-		end:   partSize - 1, //ちょうどpartSize分取れるように-1する
+		end:   partSize - 1, // ちょうどpartSizeバイト分取れるように-1する
 	}
-	downloadRanges := []DownloadRange{firstDownloadRange}
+	dRangeRequests := []RangeRequest{firstRangeRequest}
 
 	for i := 1; i < maxGoroutines; i++ {
-		downloadRange := DownloadRange{
-			start: downloadRanges[i-1].end + 1,
-			end:   downloadRanges[i-1].end + partSize,
+		dRangeRequest := RangeRequest{
+			start: dRangeRequests[i-1].end + 1,
+			end:   dRangeRequests[i-1].end + partSize,
 		}
 		if i == maxGoroutines-1 {
-			downloadRange.end = fileSize - 1
+			dRangeRequest.end = fileSize - 1
 		}
-		downloadRanges = append(downloadRanges, downloadRange)
+		dRangeRequests = append(dRangeRequests, dRangeRequest)
 	}
 
-	return downloadRanges
+	return dRangeRequests
 }
 
-type DownloadRange struct {
+type RangeRequest struct {
 	start int
 	end   int
+}
+
+func DownloadRange(rangeRequest RangeRequest) {
+
 }
 
 func main() {
 	url := "https://raw.githubusercontent.com/golang/go/master/README.md"
 
-	resp, err := http.Get(url)
+	resp, err := http.Head(url)
 	if err != nil {
 		panic(err)
 	}
 	defer resp.Body.Close()
+
+	contentLength := resp.Header.Get("Content-Length")
+	fileSize, err := strconv.Atoi(contentLength)
+	if err != nil {
+		panic(err)
+	}
+
+	// GOMAXPROCSの値は自動値のまま
+	maxGoroutines := runtime.GOMAXPROCS(0)
+	rangeRequests := generateRangeRequests(maxGoroutines, fileSize)
+
+	var wg sync.WaitGroup
+	for i := 0; i < maxGoroutines; i++ {
+		wg.Add(1)
+		//TODO
+	}
 
 	out, err := os.Create("a.out")
 	if err != nil {
