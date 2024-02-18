@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"runtime"
 	"strconv"
 	"sync"
@@ -30,16 +29,16 @@ func getFileSize(url string) (int, error) {
 	return size, nil
 }
 
-func generateRangeRequests(maxGoroutines int, fileSize int) []RangeRequest {
+func generateRangeRequests(maxGoroutines int, fileSize int) []rangeRequest {
 	partSize := fileSize / maxGoroutines
-	firstRangeRequest := RangeRequest{
+	firstRangeRequest := rangeRequest{
 		start: 0,
 		end:   partSize - 1, // ちょうどpartSizeバイト分取れるように-1する
 	}
-	dRangeRequests := []RangeRequest{firstRangeRequest}
+	dRangeRequests := []rangeRequest{firstRangeRequest}
 
 	for i := 1; i < maxGoroutines; i++ {
-		dRangeRequest := RangeRequest{
+		dRangeRequest := rangeRequest{
 			start: dRangeRequests[i-1].end + 1,
 			end:   dRangeRequests[i-1].end + partSize,
 		}
@@ -52,13 +51,55 @@ func generateRangeRequests(maxGoroutines int, fileSize int) []RangeRequest {
 	return dRangeRequests
 }
 
-type RangeRequest struct {
+type rangeRequest struct {
 	start int
 	end   int
 }
 
-func DownloadRange(rangeRequest RangeRequest) {
+func downloadRange(rangeRequest rangeRequest, url string, ch chan<- downloadResult, wg *sync.WaitGroup) {
+	defer wg.Done()
 
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		ch <- downloadResult{
+			data: nil,
+			err:  err,
+		}
+		return
+	}
+	rangeHeader := fmt.Sprintf("bytes=%d-%d", rangeRequest.start, rangeRequest.end)
+	req.Header.Set("Range", rangeHeader)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		ch <- downloadResult{
+			data: nil,
+			err:  err,
+		}
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		ch <- downloadResult{
+			data: nil,
+			err:  err,
+		}
+		return
+	}
+
+	ch <- downloadResult{
+		data: body,
+		err:  nil,
+	}
+	return
+}
+
+type downloadResult struct {
+	data []byte
+	err  error
 }
 
 func main() {
@@ -79,20 +120,24 @@ func main() {
 	// GOMAXPROCSの値は自動値のまま
 	maxGoroutines := runtime.GOMAXPROCS(0)
 	rangeRequests := generateRangeRequests(maxGoroutines, fileSize)
+	fmt.Printf("%+v\n", rangeRequests)
+	println(rangeRequests[0].start, rangeRequests[0].end)
 
-	var wg sync.WaitGroup
+	resultChan := make(chan downloadResult, maxGoroutines)
+	wg := &sync.WaitGroup{}
 	for i := 0; i < maxGoroutines; i++ {
 		wg.Add(1)
-		//TODO
+		go downloadRange(rangeRequests[i], url, resultChan, wg)
 	}
 
-	out, err := os.Create("a.out")
-	if err != nil {
-		panic(err)
-	}
+	wg.Wait()
+	close(resultChan)
 
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		panic(err)
+	for result := range resultChan {
+		if result.err != nil {
+			println(result.err)
+		} else {
+			println(string(result.data))
+		}
 	}
 }
