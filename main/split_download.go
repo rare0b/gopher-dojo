@@ -145,11 +145,11 @@ func main() {
 	//	return cmp.Compare(a.index, b.index)
 	//})
 
-	for _, result := range results {
-		if result.err != nil {
-			print(result.err)
-		} else {
-			print(string(result.data))
-		}
-	}
+	//for _, result := range results {
+	//	if result.err != nil {
+	//		print(result.err)
+	//	} else {
+	//		print(string(result.data))
+	//	}
+	//}
 }

@@ -1,9 +1,7 @@
 package main
 
 import (
-	"io"
 	"net/http"
-	"os"
 )
 
 func main() {
@@ -15,13 +13,16 @@ func main() {
 	}
 	defer resp.Body.Close()
 
-	out, err := os.Create("a.out")
-	if err != nil {
-		panic(err)
-	}
+	//out, err := os.Create("a.out")
+	//if err != nil {
+	//	panic(err)
+	//}
+	//
+	//_, err = io.Copy(out, resp.Body)
+	//if err != nil {
+	//	panic(err)
+	//}
 
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		panic(err)
-	}
+	//body, err := io.ReadAll(resp.Body)
+	//print(string(body))
 }
