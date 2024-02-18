@@ -56,14 +56,15 @@ type rangeRequest struct {
 	end   int
 }
 
-func downloadRange(rangeRequest rangeRequest, url string, ch chan<- downloadResult, wg *sync.WaitGroup) {
+func downloadRange(rangeRequest rangeRequest, index int, url string, ch chan<- downloadResult, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		ch <- downloadResult{
-			data: nil,
-			err:  err,
+			index: index,
+			data:  nil,
+			err:   err,
 		}
 		return
 	}
@@ -74,8 +75,9 @@ func downloadRange(rangeRequest rangeRequest, url string, ch chan<- downloadResu
 	resp, err := client.Do(req)
 	if err != nil {
 		ch <- downloadResult{
-			data: nil,
-			err:  err,
+			index: index,
+			data:  nil,
+			err:   err,
 		}
 		return
 	}
@@ -84,22 +86,25 @@ func downloadRange(rangeRequest rangeRequest, url string, ch chan<- downloadResu
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		ch <- downloadResult{
-			data: nil,
-			err:  err,
+			index: index,
+			data:  nil,
+			err:   err,
 		}
 		return
 	}
 
 	ch <- downloadResult{
-		data: body,
-		err:  nil,
+		index: index,
+		data:  body,
+		err:   nil,
 	}
 	return
 }
 
 type downloadResult struct {
-	data []byte
-	err  error
+	index int
+	data  []byte
+	err   error
 }
 
 func main() {
@@ -120,24 +125,31 @@ func main() {
 	// GOMAXPROCSの値は自動値のまま
 	maxGoroutines := runtime.GOMAXPROCS(0)
 	rangeRequests := generateRangeRequests(maxGoroutines, fileSize)
-	fmt.Printf("%+v\n", rangeRequests)
-	println(rangeRequests[0].start, rangeRequests[0].end)
 
 	resultChan := make(chan downloadResult, maxGoroutines)
 	wg := &sync.WaitGroup{}
 	for i := 0; i < maxGoroutines; i++ {
 		wg.Add(1)
-		go downloadRange(rangeRequests[i], url, resultChan, wg)
+		go downloadRange(rangeRequests[i], i, url, resultChan, wg)
 	}
 
 	wg.Wait()
 	close(resultChan)
-
+	results := make([]downloadResult, maxGoroutines)
 	for result := range resultChan {
+		results[result.index] = result
+	}
+
+	// resultsの作り方変更で要らなくなったけど、ソート方法の参考にとっておく
+	//slices.SortStableFunc(results, func(a, b downloadResult) int {
+	//	return cmp.Compare(a.index, b.index)
+	//})
+
+	for _, result := range results {
 		if result.err != nil {
-			println(result.err)
+			print(result.err)
 		} else {
-			println(string(result.data))
+			print(string(result.data))
 		}
 	}
 }
